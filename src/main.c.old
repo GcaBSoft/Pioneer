@@ -1,0 +1,82 @@
+#ifndef __AVR_ATmega328P__
+#define	__AVR_ATmega328P__
+#endif
+#define F_CPU 16000000UL
+#include <avr/io.h>
+#include "uart.h"
+#include <avr/interrupt.h>
+ISR(TIMER0_COMPA_vect)
+{
+	static uint8_t time=0;
+	static uint8_t ticks=16;
+	time++;
+	if(ticks<16 && time>=5)
+	{
+		ticks++;
+		time=0;
+		PORTB^=(1<<5);
+	}
+	else if(time>=40)
+	{
+		ticks = 0;
+		time=0;
+	}
+	
+	
+}
+int main() 
+{
+	sei();
+	BUFFER * send = Buffer_Create(256,sizeof(unsigned char),0);
+	Uart_Setup(0,send,0,B9600);
+	Buffer_AddArray(send,"Ready\n",sizeof(unsigned char),sizeof("Ready\n")-1);
+	Uart_Send(0);
+	char string [10];
+	TCCR0A = (1<<WGM01);
+	TIMSK0 = (1<<OCIE0A);
+	TCCR0B =  (1<<CS00) | (1<<CS01);
+	OCR0A = 1;
+	DDRB |= (1<<5);
+	PORTB |=(1<<5);
+	DDRB |=(1<<4);
+	TCCR1B =  (1<<CS00) | (1<<CS01);
+	uint8_t prev = PINB;
+	uint8_t ticks =1;
+	TCNT1 = 0;
+	uint8_t samples[10];
+	uint8_t count = 0;
+	while(1)
+	{
+		if(!(PINB & (1<<0)) && (prev&(1<<0)))
+		{
+			PORTB |=(1<<4);
+			if(TCNT1>5)
+			{
+				samples[count++] = ticks;
+				if(count>=10)
+				{
+					for(int i =0;i<10;i++)
+					{
+						itoa(samples[i],string,10);
+						Buffer_AddArray(send,"Ticks was: ",sizeof(unsigned char),sizeof("Ticks was: ")-1);
+						Buffer_AddArray(send,string,sizeof(char),strlen(string));
+						Buffer_Add(send,"\n",sizeof(char));
+					}
+					Uart_Send(0);
+					TCCR1B =  0;
+				}
+				ticks = 0;
+			}
+			ticks++;
+			TCNT1 = 0;
+			prev=PINB;	
+		}
+		else if((PINB & (1<<0)) && !(prev&(1<<0)))
+		{
+			PORTB &=~(1<<4);
+			TCNT1 = 0;	
+			prev=PINB;	
+		}
+			
+	}
+}
